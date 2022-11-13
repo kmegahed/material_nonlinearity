@@ -1,6 +1,6 @@
 %clc; clear all;
 lamda_target=360;dlamda_1=50;tol=1e-4;tol2=1e-4;ndofn=3;
-for i=1:1
+
 node=[0,0;
     0 288;
     240 288;
@@ -19,20 +19,19 @@ bc=[1 1;1 2;1 3;
     6 1;6 2;6 3];
 %node dof load
 load=[2 1 0.1; 3 2 -1; 4 2 -0.5];
-end
-for i=1:1
-    nel=size(ele,1);nnode=size(node,1);ndof=nnode*ndofn;node_updated=node;
-    fi=zeros(ndofn*2,nel);Fi=fi;Fi_history=fi;up=fi;uT=fi;uT_history=fi;%(uT Total)
-    du=zeros(ndof,1);u=du;u_history=du;pref=du;
-    n=0;zz=1;lamda=0;hinge=[];KK=zeros(ndof);KE=zeros(6,nel);
-    %load
-    for j=1:size(load,1);pref(load(j,1)*ndofn-ndofn+load(j,2))=load(j,3);end
-    %constraint
-    const=[];
-    for j=1:size(bc,1);const=[const;bc(j,1)*ndofn-ndofn+bc(j,2)];end
-    %free degree of freedom
-    free=setdiff(1:ndof,const);
-end
+
+nel=size(ele,1);nnode=size(node,1);ndof=nnode*ndofn;node_updated=node;
+fi=zeros(ndofn*2,nel);Fi=fi;Fi_history=fi;up=fi;uT=fi;uT_history=fi;%(uT Total)
+du=zeros(ndof,1);u=du;u_history=du;pref=du;
+n=0;zz=1;lamda=0;hinge=[];KK=zeros(ndof);KE=zeros(6,nel);
+%load
+for j=1:size(load,1);pref(load(j,1)*ndofn-ndofn+load(j,2))=load(j,3);end
+%constraint
+const=[];
+for j=1:size(bc,1);const=[const;bc(j,1)*ndofn-ndofn+bc(j,2)];end
+%free degree of freedom
+free=setdiff(1:ndof,const);
+
 while lamda<=lamda_target
     if lamda==lamda_target;disp('max applied load');break;end
     if lamda+dlamda_1>lamda_target;dlamda=lamda_target-lamda;else; dlamda=dlamda_1;end
