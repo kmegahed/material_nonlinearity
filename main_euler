@@ -1,5 +1,5 @@
 %clc; clear all;
-lamda_target=360;dlamda_1=50;tol=1e-4;tol2=1e-4;ndofn=3;
+lamda_target=360;dlamda_1=10;tol=1e-4;tol2=1e-4;ndofn=3;
 
 node=[0,0;
     0 288;
@@ -47,9 +47,9 @@ while lamda<=lamda_target
         %transformation matrix and member length
         [L,T]=trans(nody);
         %stiffness
-        ke_L=kee(E,L,A,I);kg_L=kgg(PM(3),L);
-        [G,km_L]=kmm(ke_L,kg_L,PM,PM,Py,Mp,tol);%mid like previous PM
-        kt_L=ke_L+kg_L+km_L;kt_G= T'*kt_L*T;
+        ke_L=kee(E,L,A,I);
+        [G,km_L]=kmm(ke_L,PM,Py,Mp,tol);%mid like previous PM
+        kt_L=ke_L+km_L;kt_G= T'*kt_L*T;
         %Assemblying stiffness
         Kt(eldofs,eldofs)=Kt(eldofs,eldofs)+kt_G;
     end
@@ -59,149 +59,68 @@ while lamda<=lamda_target
     elseif rcond(decomposition(keff))<eps;disp('illyy condition');break;
     end
     du_free=keff\(pref(free));
-    tau_repeat_corrector=true;
-    while tau_repeat_corrector
-        tau_repeat=true;
-        while tau_repeat
-            du(free)=dlamda*du_free;
-            node_temp=add_disp(node_updated,du,nnode,ndofn);
-            dfint=KE;tau_array=[];
-            for iel=1:nel
-                ele_nodes=ele(iel,1:2);nody=node_updated(ele_nodes,:);
-                eldofs=         ndofn*(ele_nodes(1)-1)+1:ndofn*ele_nodes(1);
-                eldofs=[eldofs  ndofn*(ele_nodes(2)-1)+1:ndofn*ele_nodes(2)];
-                E=ele(iel,3); I=ele(iel,4); A=ele(iel,5); Py=A*ele(iel,6); Mp=ele(iel,6)*ele(iel,7);
-                PM=[Fi(1,iel); Fi(3,iel); Fi(4,iel); Fi(6,iel)];%P1 M1 P2 M2
-                [L,T]=trans(nody);ke_L=kee(E,L,A,I);kg_L=kgg(PM(3),L);
-                [G,km_L]=kmm(ke_L,kg_L,PM,PM,Py,Mp,tol);%mid like previous PM
-                kt_L=ke_L+kg_L+km_L;
-                du_e=T*du(eldofs);
-                dfint(:,iel)=kt_L*du_e;
-                fint(:,iel)=Fi(:,iel)+dfint(:,iel);
-                [L,T_temp]=trans(node_temp(ele_nodes,:));
-                fint(:,iel)=T_temp*T'*fint(:,iel);
-                [tau_array,ph1_prev,ph2_prev]=tauy(tau_array,fint(:,iel),Fi(:,iel),Mp,Py,tol);
-            end%element
-            if find(tau_array)
-                tt=min(tau_array);dlamda=tt*dlamda;
-            else
-                dfint_predictor=0.5*dfint;
-                du_predictor=0.5*du;
-                tau_repeat=false;
-            end
-        end %while tau_repeat
-        node_predictor=add_disp(node_updated,du_predictor,nnode,ndofn);
-        fint_predictor=Fi+dfint_predictor;
+    tau_repeat=true;
+    while tau_repeat
+        du(free)=dlamda*du_free;
+        node_temp=add_disp(node_updated,du,nnode,ndofn);
+        dfint=KE;tau_array=[];
         for iel=1:nel
-            ele_nodes=ele(iel,1:2);
-            eldofs=         ndofn*(ele_nodes(1)-1)+1:ndofn*ele_nodes(1);
-            eldofs=[eldofs  ndofn*(ele_nodes(2)-1)+1:ndofn*ele_nodes(2)];
-            E=ele(iel,3); I=ele(iel,4); A=ele(iel,5); Py=A*ele(iel,6); Mp=ele(iel,6)*ele(iel,7);
-            [L,T]=trans(node_updated(ele_nodes,:));
-            [L,T2]=trans(node_predictor(ele_nodes,:));
-            fint_predictor(:,iel)=T2*T'*fint_predictor(:,iel);
-            p1=Fi(1,iel)/Py;p2=Fi(4,iel)/Py;m1=Fi(3,iel)/Mp;m2=Fi(6,iel)/Mp;
-            ph1_prev=phii(p1,m1,0);ph2_prev=phii(p2,m2,0);
-            p1_T=fint_predictor(1,iel)/Py;p2_T=fint_predictor(4,iel)/Py;m1_T=fint_predictor(3,iel)/Mp;m2_T=fint_predictor(6,iel)/Mp;
-            ph1_T=phii(p1_T,m1_T,0);ph2_T=phii(p2_T,m2_T,0);ph1_tol=phii(p1_T,m1_T,0.01);ph2_tol=phii(p2_T,m2_T,0.01);
-            if abs(ph1_prev-1)<=tol&&ph1_tol<=(1+tol)&&abs(ph1_T-1)>tol
-                if ph1_T>(1+tol); flag=1;%disp('drifted point above yield surface.')
-                elseif ph1_T<(1-tol); flag=0;%disp('drifted point below yield surface.')
-                end
-                [correc]=radial_projection(p1_T,m1_T,tol2,flag);
-                if flag==1;fint_predictor([1 3],iel)=correc*fint_predictor([1 3],iel);
-                else fint_predictor([1 3],iel)=fint_predictor([1 3],iel)+[correc(1)*Py;correc(2)*Mp];
-                end
-            end
-            if abs(ph2_prev-1)<=tol&&ph2_tol<=(1+tol)&&abs(ph2_T-1)>tol
-                if ph2_T>(1+tol); flag=1;%disp('drifted point above yield surface.')
-                elseif ph2_T<(1-tol); flag=0;%disp('drifted point below yield surface.')
-                end
-                [correc]=radial_projection(p2_T,m2_T,tol2,flag);
-                if flag==1;fint_predictor([4 6],iel)=correc*fint_predictor([4 6],iel);
-                else fint_predictor([4 6],iel)=fint_predictor([4 6],iel)+[correc(1)*Py;correc(2)*Mp];
-                end
-            end
-        end%element
-        kt_corrector=KK;
-        for iel=1:nel
-            ele_nodes=ele(iel,1:2);nody=node_predictor(ele_nodes,:);
+            ele_nodes=ele(iel,1:2);nody=node_updated(ele_nodes,:);
             eldofs=         ndofn*(ele_nodes(1)-1)+1:ndofn*ele_nodes(1);
             eldofs=[eldofs  ndofn*(ele_nodes(2)-1)+1:ndofn*ele_nodes(2)];
             E=ele(iel,3); I=ele(iel,4); A=ele(iel,5); Py=A*ele(iel,6); Mp=ele(iel,6)*ele(iel,7);
             PM=[Fi(1,iel); Fi(3,iel); Fi(4,iel); Fi(6,iel)];%P1 M1 P2 M2
-            PM_P=[fint_predictor(1,iel); fint_predictor(3,iel); fint_predictor(4,iel); fint_predictor(6,iel)];
-            [L,T]=trans(nody);ke_L=kee(E,L,A,I);kg_L=kgg(PM_P(3),L);
-            [G,km_L]=kmm(ke_L,kg_L,PM,PM_P,Py,Mp,tol);%previous - mid (predictor) && control=0
-            kt_L=ke_L+kg_L+km_L;
-            kt_G= T'*kt_L*T;
-            kt_corrector(eldofs,eldofs)=kt_corrector(eldofs,eldofs)+kt_G;
-        end
-        keff=kt_corrector(free,free);
-        [V,D]=eig(keff);
-        if find(diag(D<=0));disp('illyy condition');break;
-        elseif rcond(decomposition(keff))<eps;disp('illyy condition');break;
-        end
-        du(free)=keff\(dlamda*pref(free));
-        node_temp=add_disp(node_updated,du,nnode,ndofn);dfint=KE;tau_array=[];dup=KE;du_total=KE;
-        for iel=1:nel
-            ele_nodes=ele(iel,1:2);nody=node_predictor(ele_nodes,:);%predictor
-            eldofs=         ndofn*(ele_nodes(1)-1)+1:ndofn*ele_nodes(1);
-            eldofs=[eldofs  ndofn*(ele_nodes(2)-1)+1:ndofn*ele_nodes(2)];
-            E=ele(iel,3); I=ele(iel,4); A=ele(iel,5); Py=A*ele(iel,6); Mp=ele(iel,6)*ele(iel,7);
-            PM=[Fi(1,iel); Fi(3,iel); Fi(4,iel); Fi(6,iel)];%P1 M1 P2 M2
-            PM_P=[fint_predictor(1,iel); fint_predictor(3,iel); fint_predictor(4,iel); fint_predictor(6,iel)];%new
-            [L,T]=trans(nody);ke_L=kee(E,L,A,I);kg_L=kgg(PM_P(3),L);
-            [G,km_L]=kmm(ke_L,kg_L,PM,PM_P,Py,Mp,tol);%same as last one
-            kt_L=ke_L+kg_L+km_L;
+            [L,T]=trans(nody);ke_L=kee(E,L,A,I);
+            [G,km_L]=kmm(ke_L,PM,Py,Mp,tol);%mid like previous PM
+            kt_L=ke_L+km_L;
             du_e=T*du(eldofs);
             dfint(:,iel)=kt_L*du_e;
-            [L,T3]=trans(node_updated(ele_nodes,:));
-            dfint(:,iel)=T3*T'*dfint(:,iel);
             fint(:,iel)=Fi(:,iel)+dfint(:,iel);
-            [L,T2]=trans(node_temp(ele_nodes,:));
-            fint(:,iel)=T2*T3'*fint(:,iel);
+            [L,T_temp]=trans(node_temp(ele_nodes,:));
+            fint(:,iel)=T_temp*T'*fint(:,iel);
             [tau_array,ph1_prev,ph2_prev]=tauy(tau_array,fint(:,iel),Fi(:,iel),Mp,Py,tol);
         end%element
         if find(tau_array)
             tt=min(tau_array);dlamda=tt*dlamda;
         else
-            for iel=1:nel
-                ele_nodes=ele(iel,1:2);
-                eldofs=         ndofn*(ele_nodes(1)-1)+1:ndofn*ele_nodes(1);
-                eldofs=[eldofs  ndofn*(ele_nodes(2)-1)+1:ndofn*ele_nodes(2)];
-                E=ele(iel,3); I=ele(iel,4); A=ele(iel,5); Py=A*ele(iel,6); Mp=ele(iel,6)*ele(iel,7);
-                p1=Fi(1,iel)/Py;p2=Fi(4,iel)/Py;m1=Fi(3,iel)/Mp;m2=Fi(6,iel)/Mp;
-                ph1_prev=phii(p1,m1,0);ph2_prev=phii(p2,m2,0);
-                p1_T=fint(1,iel)/Py;p2_T=fint(4,iel)/Py;
-                m1_T=fint(3,iel)/Mp;m2_T=fint(6,iel)/Mp;
-                ph1_T=phii(p1_T,m1_T,0);ph2_T=phii(p2_T,m2_T,0);
-                ph1_tol=phii(p1_T,m1_T,0.01);ph2_tol=phii(p2_T,m2_T,0.01);
-                
-                if abs(ph1_prev-1)<=tol&&ph1_tol<=(1+tol)&&abs(ph1_T-1)>tol
-                    if ph1_T>(1+tol); flag=1;%disp('drifted point above yield surface.')
-                    elseif ph1_T<(1-tol); flag=0;%disp('drifted point below yield surface.')
-                    end
-                    [correc]=radial_projection(p1_T,m1_T,tol2,flag);
-                    if flag==1;fint([1 3],iel)=correc*fint([1 3],iel);
-                    else fint([1 3],iel)=fint([1 3],iel)+[correc(1)*Py;correc(2)*Mp];
-                    end
-                end
-                if abs(ph2_prev-1)<=tol&&ph2_tol<=(1+tol)&&abs(ph2_T-1)>tol
-                    if ph2_T>(1+tol); flag=1;%disp('drifted point above yield surface.')
-                    elseif ph2_T<(1-tol); flag=0;%disp('drifted point below yield surface.')
-                    end
-                    [correc]=radial_projection(p2_T,m2_T,tol2,flag);
-                    if flag==1;fint([4 6],iel)=correc*fint([4 6],iel);
-                    else fint([4 6],iel)=fint([4 6],iel)+[correc(1)*Py;correc(2)*Mp];
-                    end
-                end
-            end%element
-            tau_repeat_corrector=false;
-        end%find(tau)
-    end %while tau_repeat_corrector
+            tau_repeat=false;
+        end
+    end %while tau_repeat
+    node_temp=add_disp(node_updated,du,nnode,ndofn);
+    fint_temp=Fi+dfint;
+    for iel=1:nel
+        ele_nodes=ele(iel,1:2);
+        eldofs=         ndofn*(ele_nodes(1)-1)+1:ndofn*ele_nodes(1);
+        eldofs=[eldofs  ndofn*(ele_nodes(2)-1)+1:ndofn*ele_nodes(2)];
+        E=ele(iel,3); I=ele(iel,4); A=ele(iel,5); Py=A*ele(iel,6); Mp=ele(iel,6)*ele(iel,7);
+        [L,T]=trans(node_updated(ele_nodes,:));
+        [L,T2]=trans(node_temp(ele_nodes,:));
+        fint_temp(:,iel)=T2*T'*fint_temp(:,iel);
+        p1=Fi(1,iel)/Py;p2=Fi(4,iel)/Py;m1=Fi(3,iel)/Mp;m2=Fi(6,iel)/Mp;
+        ph1_prev=phii(p1,m1,0);ph2_prev=phii(p2,m2,0);
+        p1_T=fint_temp(1,iel)/Py;p2_T=fint_temp(4,iel)/Py;m1_T=fint_temp(3,iel)/Mp;m2_T=fint_temp(6,iel)/Mp;
+        ph1_T=phii(p1_T,m1_T,0);ph2_T=phii(p2_T,m2_T,0);ph1_tol=phii(p1_T,m1_T,0.01);ph2_tol=phii(p2_T,m2_T,0.01);
+        if abs(ph1_prev-1)<=tol&&ph1_tol<=(1+tol)&&abs(ph1_T-1)>tol
+            if ph1_T>(1+tol); flag=1;%disp('drifted point above yield surface.')
+            elseif ph1_T<(1-tol); flag=0;%disp('drifted point below yield surface.')
+            end
+            [correc]=radial_projection(p1_T,m1_T,tol2,flag);
+            if flag==1;fint_temp([1 3],iel)=correc*fint_temp([1 3],iel);
+            else fint_temp([1 3],iel)=fint_temp([1 3],iel)+[correc(1)*Py;correc(2)*Mp];
+            end
+        end
+        if abs(ph2_prev-1)<=tol&&ph2_tol<=(1+tol)&&abs(ph2_T-1)>tol
+            if ph2_T>(1+tol); flag=1;%disp('drifted point above yield surface.')
+            elseif ph2_T<(1-tol); flag=0;%disp('drifted point below yield surface.')
+            end
+            [correc]=radial_projection(p2_T,m2_T,tol2,flag);
+            if flag==1;fint_temp([4 6],iel)=correc*fint_temp([4 6],iel);
+            else fint_temp([4 6],iel)=fint_temp([4 6],iel)+[correc(1)*Py;correc(2)*Mp];
+            end
+        end
+    end%element
     node_updated=node_temp;
-    Fi=fint;Fi_history=[Fi_history;Fi];u=u+du;up=up+dup;
+    Fi=fint_temp;Fi_history=[Fi_history;Fi];u=u+du;up=up+dup;
     %up_history=[up_histroy;up];
     lamda=lamda+dlamda;zz=zz+1;lamda
 end
@@ -221,14 +140,7 @@ ke =    [ A*E/L            0               0       -A*E/L       0             0;
     0           -12*E*I/(L^3)   -6*E*I/(L^2)  0    12*E*I/(L^3)    -6*E*I/(L^2);
     0            6*E*I/(L^2)     2*E*I/L    0     -6*E*I/(L^2)      4*E*I/L ];
 end
-function kg=kgg(p,L)
-kg=p/L*[1  0        0       -1   0      0;
-    0  6/5     L/10      0  -6/5    L/10;
-    0  L/10 (2*L^2)/15   0  -L/10 -L^2/30;
-    -1   0       0        1    0      0;
-    0  -6/5   -L/10      0  6/5   -L/10;
-    0  L/10  -L^2/30     0 -L/10  (2*L^2)/15];
-end
+
 function ph=phii(p,m,t)
 ph=(p/(1+t))^2+(m/(1+t))^2+3.5*(p/(1+t))^2*(m/(1+t))^2;
 end
@@ -236,21 +148,21 @@ function [dph_p,dph_m]=dphii(p,m,Py,Mp)
     dph_p=2*p/Py + 7*p*m^2/Py;
     dph_m=2*m/Mp + 7*p^2*m/Mp;
 end
-function [G,km]=kmm(ke,kg,fp,fm,Py,Mp,tol)%fp previous fm mean mid
+function [G,km]=kmm(ke,fp,Py,Mp,tol)%fp previous fm mean mid
 p1_prev=fp(1)/Py;m1_prev=fp(2)/Mp;  p2_prev=fp(3)/Py;m2_prev=fp(4)/Mp;
-p1_mid=fm(1)/Py;m1_mid=fm(2)/Mp;    p2_mid=fm(3)/Py;m2_mid=fm(4)/Mp;
 phi_1_prev=phii(p1_prev,m1_prev,0);phi_2_prev=phii(p2_prev,m2_prev,0);
+if phi_1_prev>1+tol ||phi_2_prev>1+tol; disp('45');end
 if phi_1_prev<(1-tol) && phi_2_prev<(1-tol)             G=0;km=zeros(6);
 else
     if abs(phi_1_prev-1)<=tol && phi_2_prev<(1-tol)
-        [dphip1,dphim1]=dphii(p1_mid,m1_mid,Py,Mp);
+        [dphip1,dphim1]=dphii(p1_prev,m1_prev,Py,Mp);
         G=[dphip1;0;dphim1;0;0;0];
     elseif phi_1_prev<(1-tol) && abs(phi_2_prev-1)<=tol
-        [dphip2,dphim2]=dphii(p2_mid,m2_mid,Py,Mp);
+        [dphip2,dphim2]=dphii(p2_prev,m2_prev,Py,Mp);
         G=[0;0;0;dphip2;0;dphim2];
     elseif abs(phi_1_prev-1)<=tol && abs(phi_2_prev-1)<=tol
-        [dphip1,dphim1]=dphii(p1_mid,m1_mid,Py,Mp);
-        [dphip2,dphim2]=dphii(p2_mid,m2_mid,Py,Mp);
+        [dphip1,dphim1]=dphii(p1_prev,m1_prev,Py,Mp);
+        [dphip2,dphim2]=dphii(p2_prev,m2_prev,Py,Mp);
         G=[dphip1 0;
             0     0;
             dphim1 0;
@@ -258,7 +170,7 @@ else
             0     0;
             0 dphim2];
     end
-    km=-(ke+kg)*G*((G'*(ke+kg)*G)^-1)*G'*(ke+kg);
+    km=-ke*G*(G'*ke*G)^-1*G'*ke;
 end
 end
 function node_temp=add_disp(node_updated,du,nnode,ndofn)
