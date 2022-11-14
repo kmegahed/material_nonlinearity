@@ -166,10 +166,6 @@ while lamda<=lamda_target
             [L,T2]=trans(node_temp(ele_nodes,:));
             fint(:,iel)=T2*T3'*fint(:,iel);
             [tau_array,ph1_prev,ph2_prev]=tauy(tau_array,fint(:,iel),Fi(:,iel),Mp,Py,tol);
-            if abs(ph1_prev-1)<=tol || abs(ph2_prev-1)<=tol
-                plastic_sign=(((G'*(ke_L+kg_L)*G)^-1)*G'*(ke_L+kg_L))*du_e;
-                if find(plastic_sign<0);disp('attemped unloading');return;end
-            end
         end%element
         if find(tau_array)
             tt=min(tau_array);dlamda=tt*dlamda;
